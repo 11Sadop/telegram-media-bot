@@ -33,20 +33,19 @@ def get_main_menu():
     """إنشاء القائمة الرئيسية"""
     keyboard = [
         [
-            InlineKeyboardButton("🖼️ إزالة الخلفية", callback_data="mode_background"),
-            InlineKeyboardButton("🏷️ إزالة علامة مائية", callback_data="mode_watermark"),
+            InlineKeyboardButton("📹 TikTok", callback_data="info_tiktok"),
+            InlineKeyboardButton("📸 Instagram", callback_data="info_instagram"),
+            InlineKeyboardButton("▶️ YouTube", callback_data="info_youtube"),
         ],
         [
-            InlineKeyboardButton("✍️ إزالة الكتابة", callback_data="mode_text"),
-            InlineKeyboardButton("📱 قص الإطار", callback_data="mode_crop"),
+            InlineKeyboardButton("🐦 Twitter/X", callback_data="info_twitter"),
+            InlineKeyboardButton("📘 Facebook", callback_data="info_facebook"),
+            InlineKeyboardButton("📌 Pinterest", callback_data="info_pinterest"),
         ],
         [
-            InlineKeyboardButton("📹 تحميل TikTok", callback_data="mode_tiktok"),
-            InlineKeyboardButton("📸 تحميل Instagram", callback_data="mode_instagram"),
-        ],
-        [
-            InlineKeyboardButton("📌 تحميل Pinterest", callback_data="mode_pinterest"),
-            InlineKeyboardButton("👻 تحميل Snapchat", callback_data="mode_snapchat"),
+            InlineKeyboardButton("👻 Snapchat", callback_data="info_snapchat"),
+            InlineKeyboardButton("💖 Likee", callback_data="info_likee"),
+            InlineKeyboardButton("🎬 Kwai", callback_data="info_kwai"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -55,22 +54,26 @@ def get_main_menu():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر البداية مع القائمة"""
     welcome_text = """
-🎨 *مرحباً بك في بوت أدوات الوسائط!*
+🎬 *بوت تحميل الفيديوهات*
 
-✨ *الميزات المتاحة:*
+📥 *أرسل رابط الفيديو مباشرة وأحمّله لك!*
 
-🖼️ *إزالة الخلفية* - أرسل صورة
-🏷️ *إزالة العلامة المائية* - أزل الشعارات
-✍️ *إزالة الكتابة* - نظف الصور
-📱 *قص الإطار* - أزل شريط الحالة
+✨ *المنصات المدعومة:*
 
-📹 *تحميل الفيديوهات:*
-• TikTok بدون علامة مائية
-• Instagram Reels
-• Pinterest Videos
-• Snapchat Stories
+📹 TikTok - بدون علامة مائية
+📸 Instagram - Reels & Posts
+▶️ YouTube & Shorts
+🐦 Twitter / X
+📘 Facebook
+📌 Pinterest
+👻 Snapchat
+💖 Likee
+🎬 Kwai
 
-👇 *اختر من القائمة أو أرسل مباشرة:*
+━━━━━━━━━━━━━━━━━━
+💡 *طريقة الاستخدام:*
+فقط أرسل الرابط! 🔗
+━━━━━━━━━━━━━━━━━━
 """
     await update.message.reply_text(
         welcome_text, 
@@ -80,32 +83,30 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة اختيارات القائمة"""
+    """معالجة اختيارات القائمة - إظهار معلومات المنصة"""
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    mode = query.data
+    platform = query.data
     
     messages = {
-        "mode_background": "🖼️ *وضع إزالة الخلفية*\n\nأرسل صورة الآن وسأزيل خلفيتها!",
-        "mode_watermark": "🏷️ *وضع إزالة العلامة المائية*\n\nأرسل صورة فيها علامة مائية!",
-        "mode_text": "✍️ *وضع إزالة الكتابة*\n\nأرسل صورة فيها كتابة تريد إزالتها!",
-        "mode_crop": "📱 *وضع قص الإطار*\n\nأرسل سكرين شوت لقص شريط الحالة!",
-        "mode_tiktok": "📹 *تحميل TikTok*\n\nأرسل رابط فيديو TikTok!",
-        "mode_instagram": "📸 *تحميل Instagram*\n\nأرسل رابط Reel أو Post من Instagram!",
-        "mode_pinterest": "📌 *تحميل Pinterest*\n\nأرسل رابط Pin من Pinterest!",
-        "mode_snapchat": "👻 *تحميل Snapchat*\n\nأرسل رابط Story من Snapchat!",
+        "info_tiktok": "📹 *TikTok*\n\nأرسل رابط الفيديو وأحمّله بدون علامة مائية!",
+        "info_instagram": "📸 *Instagram*\n\nأرسل رابط Reel أو Post!",
+        "info_youtube": "▶️ *YouTube*\n\nأرسل رابط فيديو أو Short!",
+        "info_twitter": "🐦 *Twitter / X*\n\nأرسل رابط التغريدة!",
+        "info_facebook": "📘 *Facebook*\n\nأرسل رابط الفيديو!",
+        "info_pinterest": "📌 *Pinterest*\n\nأرسل رابط Pin!",
+        "info_snapchat": "👻 *Snapchat*\n\nأرسل رابط Story!",
+        "info_likee": "💖 *Likee*\n\nأرسل رابط الفيديو!",
+        "info_kwai": "🎬 *Kwai*\n\nأرسل رابط الفيديو!",
     }
-    
-    user_mode[user_id] = mode.replace("mode_", "")
     
     back_button = InlineKeyboardMarkup([[
         InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="back_menu")
     ]])
     
     await query.edit_message_text(
-        messages.get(mode, "اختر من القائمة"),
+        messages.get(platform, "أرسل رابط الفيديو!"),
         parse_mode='Markdown',
         reply_markup=back_button
     )
@@ -116,12 +117,9 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    user_mode.pop(user_id, None)
-    
-    welcome_text = "🎨 *القائمة الرئيسية*\n\n👇 اختر الأداة التي تريدها:"
+    text = "🎬 *القائمة الرئيسية*\n\n📥 أرسل رابط الفيديو مباشرة!"
     await query.edit_message_text(
-        welcome_text,
+        text,
         parse_mode='Markdown',
         reply_markup=get_main_menu()
     )
@@ -423,7 +421,7 @@ def main():
     
     # Callback Handlers (للأزرار)
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_menu$"))
-    app.add_handler(CallbackQueryHandler(menu_callback, pattern="^mode_"))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern="^info_"))
     
     # Media Tools Handlers
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

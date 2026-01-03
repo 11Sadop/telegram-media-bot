@@ -293,19 +293,60 @@ async def crop_phone_frame(image_bytes: bytes) -> BytesIO | None:
 # ============== تحميل الفيديوهات ==============
 
 async def download_video(url: str) -> dict | None:
-    """تحميل فيديو من الرابط"""
+    """تحميل فيديو من الرابط - يدعم جميع المنصات"""
     url_lower = url.lower()
     
+    # TikTok
     if 'tiktok' in url_lower:
         return await download_tiktok(url)
+    
+    # Instagram
     elif 'instagram' in url_lower:
         return await download_instagram(url)
+    
+    # Pinterest
     elif 'pinterest' in url_lower or 'pin.it' in url_lower:
         return await download_pinterest(url)
-    elif 'snapchat' in url_lower:
+    
+    # Snapchat
+    elif 'snapchat' in url_lower or 't.snapchat' in url_lower:
         return await download_snapchat(url)
     
-    return None
+    # YouTube & YouTube Shorts
+    elif 'youtube' in url_lower or 'youtu.be' in url_lower:
+        return await download_youtube(url)
+    
+    # Twitter / X
+    elif 'twitter' in url_lower or 'x.com' in url_lower:
+        return await download_twitter(url)
+    
+    # Facebook
+    elif 'facebook' in url_lower or 'fb.watch' in url_lower:
+        return await download_facebook(url)
+    
+    # Likee
+    elif 'likee' in url_lower:
+        return await download_likee(url)
+    
+    # Kwai
+    elif 'kwai' in url_lower:
+        return await download_kwai(url)
+    
+    # محاولة عامة بـ API
+    else:
+        return await download_generic(url)
+
+
+# دالة مساعدة للتحقق من نوع الرابط
+def is_supported_url(url: str) -> bool:
+    """التحقق إذا كان الرابط مدعوم"""
+    supported = [
+        'tiktok', 'instagram', 'pinterest', 'pin.it', 'snapchat',
+        'youtube', 'youtu.be', 'twitter', 'x.com', 'facebook', 
+        'fb.watch', 'likee', 'kwai'
+    ]
+    url_lower = url.lower()
+    return any(domain in url_lower for domain in supported)
 
 
 async def download_tiktok(url: str) -> dict | None:
@@ -457,9 +498,166 @@ async def download_snapchat(url: str) -> dict | None:
     return None
 
 
-# دالة مساعدة للتحقق من نوع الرابط
-def is_supported_url(url: str) -> bool:
-    """التحقق إذا كان الرابط مدعوم"""
-    supported = ['tiktok', 'instagram', 'pinterest', 'pin.it', 'snapchat']
-    url_lower = url.lower()
-    return any(domain in url_lower for domain in supported)
+async def download_youtube(url: str) -> dict | None:
+    """تحميل فيديو يوتيوب"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # استخدام API مجانية
+            api_url = f"https://api.vevioz.com/api/button/mp4/{url}"
+            async with session.get(
+                api_url,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={'User-Agent': 'Mozilla/5.0'}
+            ) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    # البحث عن رابط التحميل
+                    match = re.search(r'href="(https://[^"]+\.mp4[^"]*)"', html)
+                    if match:
+                        video_url = match.group(1)
+                        async with session.get(video_url, timeout=120) as vid_response:
+                            if vid_response.status == 200:
+                                content = await vid_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                output.name = "youtube_video.mp4"
+                                return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"YouTube download error: {e}")
+    return None
+
+
+async def download_twitter(url: str) -> dict | None:
+    """تحميل فيديو تويتر/X"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # استخدام twitsave API
+            api_url = f"https://twitsave.com/info?url={url}"
+            async with session.get(
+                api_url,
+                timeout=30,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            ) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    # البحث عن رابط الفيديو
+                    match = re.search(r'href="(https://[^"]*video[^"]*\.mp4[^"]*)"', html)
+                    if match:
+                        video_url = match.group(1)
+                        async with session.get(video_url, timeout=60) as vid_response:
+                            if vid_response.status == 200:
+                                content = await vid_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                output.name = "twitter_video.mp4"
+                                return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"Twitter download error: {e}")
+    return None
+
+
+async def download_facebook(url: str) -> dict | None:
+    """تحميل فيديو فيسبوك"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # استخدام fdown API
+            api_url = "https://www.fdownloader.net/api/ajaxSearch"
+            async with session.post(
+                api_url,
+                data={"q": url},
+                timeout=30,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    links = data.get('links', {}).get('download', [])
+                    if links:
+                        video_url = links[0].get('url')
+                        if video_url:
+                            async with session.get(video_url, timeout=120) as vid_response:
+                                if vid_response.status == 200:
+                                    content = await vid_response.read()
+                                    output = BytesIO(content)
+                                    output.seek(0)
+                                    output.name = "facebook_video.mp4"
+                                    return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"Facebook download error: {e}")
+    return None
+
+
+async def download_likee(url: str) -> dict | None:
+    """تحميل فيديو لايكي"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30, allow_redirects=True) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    # البحث عن الفيديو
+                    match = re.search(r'"playUrl":"([^"]+)"', html)
+                    if match:
+                        video_url = match.group(1).replace('\\u002F', '/')
+                        async with session.get(video_url, timeout=60) as vid_response:
+                            if vid_response.status == 200:
+                                content = await vid_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                output.name = "likee_video.mp4"
+                                return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"Likee download error: {e}")
+    return None
+
+
+async def download_kwai(url: str) -> dict | None:
+    """تحميل فيديو كواي"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30, allow_redirects=True) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    # البحث عن الفيديو
+                    match = re.search(r'"playUrl":"([^"]+)"', html)
+                    if not match:
+                        match = re.search(r'"videoUrl":"([^"]+)"', html)
+                    if match:
+                        video_url = match.group(1).replace('\\u002F', '/')
+                        async with session.get(video_url, timeout=60) as vid_response:
+                            if vid_response.status == 200:
+                                content = await vid_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                output.name = "kwai_video.mp4"
+                                return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"Kwai download error: {e}")
+    return None
+
+
+async def download_generic(url: str) -> dict | None:
+    """محاولة تحميل فيديو من أي رابط باستخدام API عامة"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # استخدام cobalt API
+            api_url = "https://co.wuk.sh/api/json"
+            async with session.post(
+                api_url,
+                json={"url": url},
+                timeout=30,
+                headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    video_url = data.get('url')
+                    if video_url:
+                        async with session.get(video_url, timeout=120) as vid_response:
+                            if vid_response.status == 200:
+                                content = await vid_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                output.name = "video.mp4"
+                                return {'type': 'video', 'file': output}
+    except Exception as e:
+        logger.error(f"Generic download error: {e}")
+    return None
+
