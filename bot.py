@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-بوت عروض تيليجرام - للسعودية
-+ أدوات الوسائط (إزالة الخلفية، تحميل الفيديوهات)
+بوت أدوات الوسائط
+إزالة الخلفية، تحميل الفيديوهات، والمزيد
 """
 
 import re
 import logging
 from datetime import datetime
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 
 from config import BOT_TOKEN, CHANNEL_ID, ADMIN_IDS, RSS_FEEDS, MESSAGES, SCRAPE_INTERVAL
 from database import init_db, save_offer, mark_as_sent, get_unsent_offers, get_stats, clear_database
@@ -23,31 +23,108 @@ from handlers.media_tools import (
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# حالة المستخدم (لتتبع الوضع المختار)
+user_mode = {}
 
-# ============== COMMANDS ==============
 
-async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """فحص المصادر"""
-    await update.message.reply_text("🔍 جاري الفحص...")
-    results = []
-    try:
-        from scrapers.rss_scraper import scrape_almowafir_deals
-        r = scrape_almowafir_deals()
-        results.append(f"الموفر: {len(r)}")
-    except Exception as e:
-        results.append(f"الموفر خطأ: {e}")
-    try:
-        from scrapers.rss_scraper import scrape_delivery_apps
-        r = scrape_delivery_apps()
-        results.append(f"توصيل: {len(r)}")
-    except Exception as e:
-        results.append(f"توصيل خطأ: {e}")
-    await update.message.reply_text("\n".join(results) if results else "لا نتائج")
+# ============== القائمة الرئيسية ==============
+
+def get_main_menu():
+    """إنشاء القائمة الرئيسية"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🖼️ إزالة الخلفية", callback_data="mode_background"),
+            InlineKeyboardButton("🏷️ إزالة علامة مائية", callback_data="mode_watermark"),
+        ],
+        [
+            InlineKeyboardButton("✍️ إزالة الكتابة", callback_data="mode_text"),
+            InlineKeyboardButton("📱 قص الإطار", callback_data="mode_crop"),
+        ],
+        [
+            InlineKeyboardButton("📹 تحميل TikTok", callback_data="mode_tiktok"),
+            InlineKeyboardButton("📸 تحميل Instagram", callback_data="mode_instagram"),
+        ],
+        [
+            InlineKeyboardButton("📌 تحميل Pinterest", callback_data="mode_pinterest"),
+            InlineKeyboardButton("👻 تحميل Snapchat", callback_data="mode_snapchat"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر البداية"""
-    await update.message.reply_text(MESSAGES["welcome"], parse_mode='Markdown')
+    """أمر البداية مع القائمة"""
+    welcome_text = """
+🎨 *مرحباً بك في بوت أدوات الوسائط!*
+
+✨ *الميزات المتاحة:*
+
+🖼️ *إزالة الخلفية* - أرسل صورة
+🏷️ *إزالة العلامة المائية* - أزل الشعارات
+✍️ *إزالة الكتابة* - نظف الصور
+📱 *قص الإطار* - أزل شريط الحالة
+
+📹 *تحميل الفيديوهات:*
+• TikTok بدون علامة مائية
+• Instagram Reels
+• Pinterest Videos
+• Snapchat Stories
+
+👇 *اختر من القائمة أو أرسل مباشرة:*
+"""
+    await update.message.reply_text(
+        welcome_text, 
+        parse_mode='Markdown',
+        reply_markup=get_main_menu()
+    )
+
+
+async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة اختيارات القائمة"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    mode = query.data
+    
+    messages = {
+        "mode_background": "🖼️ *وضع إزالة الخلفية*\n\nأرسل صورة الآن وسأزيل خلفيتها!",
+        "mode_watermark": "🏷️ *وضع إزالة العلامة المائية*\n\nأرسل صورة فيها علامة مائية!",
+        "mode_text": "✍️ *وضع إزالة الكتابة*\n\nأرسل صورة فيها كتابة تريد إزالتها!",
+        "mode_crop": "📱 *وضع قص الإطار*\n\nأرسل سكرين شوت لقص شريط الحالة!",
+        "mode_tiktok": "📹 *تحميل TikTok*\n\nأرسل رابط فيديو TikTok!",
+        "mode_instagram": "📸 *تحميل Instagram*\n\nأرسل رابط Reel أو Post من Instagram!",
+        "mode_pinterest": "📌 *تحميل Pinterest*\n\nأرسل رابط Pin من Pinterest!",
+        "mode_snapchat": "👻 *تحميل Snapchat*\n\nأرسل رابط Story من Snapchat!",
+    }
+    
+    user_mode[user_id] = mode.replace("mode_", "")
+    
+    back_button = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="back_menu")
+    ]])
+    
+    await query.edit_message_text(
+        messages.get(mode, "اختر من القائمة"),
+        parse_mode='Markdown',
+        reply_markup=back_button
+    )
+
+
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """العودة للقائمة الرئيسية"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_mode.pop(user_id, None)
+    
+    welcome_text = "🎨 *القائمة الرئيسية*\n\n👇 اختر الأداة التي تريدها:"
+    await query.edit_message_text(
+        welcome_text,
+        parse_mode='Markdown',
+        reply_markup=get_main_menu()
+    )
 
 
 async def offers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -230,23 +307,30 @@ async def post_to_channel(app: Application):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة الصور - إزالة الخلفية/العلامات/الكتابة/الإطار"""
+    user_id = update.message.from_user.id
     caption = (update.message.caption or "").lower().strip()
     
-    # تحديد نوع المعالجة من التعليق
-    if any(x in caption for x in ['علامة', 'ووتر', 'watermark', 'شعار', 'لوقو']):
+    # التحقق من حالة المستخدم أولاً
+    if user_id in user_mode:
+        mode = user_mode[user_id]
+    # ثم من التعليق
+    elif any(x in caption for x in ['علامة', 'ووتر', 'watermark', 'شعار', 'لوقو']):
         mode = 'watermark'
-        msg = "🔄 جاري إزالة العلامة المائية..."
     elif any(x in caption for x in ['كتابة', 'نص', 'text', 'كلام']):
         mode = 'text'
-        msg = "🔄 جاري إزالة الكتابة..."
     elif any(x in caption for x in ['قص', 'اطار', 'crop', 'frame', 'شريط']):
         mode = 'crop'
-        msg = "🔄 جاري قص الإطار..."
     else:
         mode = 'background'
-        msg = "🔄 جاري إزالة الخلفية..."
     
-    await update.message.reply_text(msg)
+    mode_messages = {
+        'background': "🔄 جاري إزالة الخلفية...",
+        'watermark': "🔄 جاري إزالة العلامة المائية...",
+        'text': "🔄 جاري إزالة الكتابة...",
+        'crop': "🔄 جاري قص الإطار...",
+    }
+    
+    await update.message.reply_text(mode_messages.get(mode, "🔄 جاري المعالجة..."))
     
     try:
         photo = update.message.photo[-1]
@@ -335,14 +419,11 @@ def main():
     
     # Handlers
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("menu", start_command))  # القائمة
     
-    # --- DEBUG & ADMIN ---
-    app.add_handler(CommandHandler("debug", debug_command))
-    
-    # FORCE CLEAR ON STARTUP (Fix for "Nothing Changed")
-    # This ensures we start fresh every restart
-    clear_database()
-    print("🧹 Database force cleared on startup.")
+    # Callback Handlers (للأزرار)
+    app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_menu$"))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern="^mode_"))
     
     # Media Tools Handlers
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

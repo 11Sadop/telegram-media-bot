@@ -32,20 +32,53 @@ def get_rembg_session():
 # ============== إزالة الخلفية ==============
 
 async def remove_background(image_bytes: bytes) -> BytesIO | None:
-    """إزالة الخلفية من الصورة - Rembg (AI محلي، مجاني، غير محدود)"""
+    """إزالة الخلفية من الصورة - API أولاً (أخف على السيرفر)"""
     
-    # محاولة 1: Rembg (الأفضل - مجاني وغير محدود)
-    result = await remove_bg_rembg(image_bytes)
+    # محاولة 1: Remove.bg API المجانية
+    result = await remove_bg_removebg_free(image_bytes)
     if result:
         return result
     
-    # محاولة 2: PhotoRoom API (احتياطي)
+    # محاولة 2: PhotoRoom API
     result = await remove_bg_photoroom(image_bytes)
     if result:
         return result
     
-    # محاولة 3: إزالة بسيطة للخلفيات البيضاء
+    # محاولة 3: Rembg (ثقيل - قد لا يعمل على السيرفرات المجانية)
+    result = await remove_bg_rembg(image_bytes)
+    if result:
+        return result
+    
+    # محاولة 4: إزالة بسيطة للخلفيات البيضاء
     return simple_white_removal(image_bytes)
+
+
+async def remove_bg_removebg_free(image_bytes: bytes) -> BytesIO | None:
+    """إزالة الخلفية باستخدام API مجانية من erase.bg"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            data = aiohttp.FormData()
+            data.add_field('image_file', image_bytes, filename='image.png', content_type='image/png')
+            
+            # Try erase.bg free API
+            async with session.post(
+                'https://api.erase.bg/upload',
+                data=data,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if result.get('result_url'):
+                        async with session.get(result['result_url']) as img_response:
+                            if img_response.status == 200:
+                                content = await img_response.read()
+                                output = BytesIO(content)
+                                output.seek(0)
+                                logger.info("✅ Background removed with erase.bg")
+                                return output
+    except Exception as e:
+        logger.warning(f"erase.bg API failed: {e}")
+    return None
 
 
 async def remove_bg_rembg(image_bytes: bytes) -> BytesIO | None:
