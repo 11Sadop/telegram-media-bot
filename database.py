@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import datetime
 
 DATABASE_FILE = "offers.db"
 
@@ -8,7 +9,7 @@ def init_db():
     conn = sqlite3.connect(DATABASE_FILE)
     c = conn.cursor()
     
-    # Create table with new schema
+    # Create offers table
     c.execute("""
         CREATE TABLE IF NOT EXISTS offers (
             id INTEGER PRIMARY KEY,
@@ -20,6 +21,16 @@ def init_db():
             image_url TEXT,
             description TEXT,
             is_sent INTEGER DEFAULT 0
+        )
+    """)
+    
+    # Create download_stats table for tracking downloads
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS download_stats (
+            id INTEGER PRIMARY KEY,
+            platform TEXT,
+            success INTEGER DEFAULT 0,
+            timestamp TEXT
         )
     """)
     
@@ -37,6 +48,55 @@ def init_db():
     conn.commit()
     conn.close()
     print("Database ready")
+
+
+def record_download(platform: str, success: bool):
+    """Record download attempt"""
+    try:
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO download_stats (platform, success, timestamp) VALUES (?, ?, ?)",
+            (platform, 1 if success else 0, datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error recording download: {e}")
+
+
+def get_download_stats():
+    """Get download statistics"""
+    try:
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        
+        # Total success/fail
+        c.execute("SELECT COUNT(*) FROM download_stats WHERE success = 1")
+        success = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(*) FROM download_stats WHERE success = 0")
+        failed = c.fetchone()[0]
+        
+        # By platform
+        c.execute("""
+            SELECT platform, 
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success,
+                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed
+            FROM download_stats 
+            GROUP BY platform
+        """)
+        by_platform = {row[0]: {"success": row[1], "failed": row[2]} for row in c.fetchall()}
+        
+        conn.close()
+        return {
+            "success": success,
+            "failed": failed,
+            "total": success + failed,
+            "by_platform": by_platform
+        }
+    except:
+        return {"success": 0, "failed": 0, "total": 0, "by_platform": {}}
 
 
 def save_offer(title, link, price=None, category=None, source=None, image_url=None, description=None):
